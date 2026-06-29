@@ -10,7 +10,10 @@ ergonomik risk skoru üreten bir karar destek prototipidir.
 3. Extra Trees modeli 19 gizli/vücut açısını tahmin eder.
 4. Görüntüden doğrudan ölçülebilen boyun, gövde, kol, dirsek, bilek, diz ve
    ayak açıları REBA hesaplamasında önceliklidir.
-5. Streamlit arayüzü görsel, video ve webcam analizi sunar.
+5. Merkezî REBA motoru standart A/B/C tablolarını; yük, kavrama, aktivite ve
+   manuel duruş modifikatörleriyle birleştirir.
+6. Streamlit arayüzü görsel, video ve webcam analizi ile "Neden bu skor?"
+   açıklamasını sunar.
 
 > Bu yazılım araştırma prototipidir; sertifikalı iş güvenliği ölçüm cihazının
 > veya ergonomi uzmanının yerini almaz.

@@ -45,6 +45,7 @@ from Utils.Reba import (
 from Utils.RebaCalibration import compute_reba_deviations
 from Utils.PoseReba2D import compute_observed_reba
 from Utils.MediaPipePose import MP_CONNECTIONS, detect_pose33, compute_reba_pose33
+from Utils.RebaEngine import RebaModifiers, score_reba
 
 # ============================================================
 # SAYFA AYARLARI
@@ -166,43 +167,46 @@ def load_all_models():
 # ============================================================
 def _pose33_only_result(pose33, world33, force_load=0, coupling=0,
                         shock_or_rapid=False, static_posture=False,
-                        repetitive=False, unstable=False):
+                        repetitive=False, unstable=False, manual_modifiers=None):
     observed = compute_reba_pose33(pose33)
     if observed is None:
         return None
-    s1, s2, s3, s4, s5, s6 = observed["steps"]
-    score_a = get_reba_tableA_score(clamp(s1,1,3), clamp(s2,1,5), clamp(s3,1,4))
-    score_a += get_force_load_score(force_load, shock_or_rapid)
-    score_b = get_reba_tableB_score(clamp(s4,1,6), clamp(s5,1,2), clamp(s6,1,3))
-    score_b += get_coupling_score(coupling)
-    final = get_reba_tableC_score(clamp(score_a,1,12), clamp(score_b,1,12))
-    final += get_activity_score(static_posture, repetitive, unstable)
+    mods = manual_modifiers or RebaModifiers(
+        load_score=get_force_load_score(force_load, shock_or_rapid),
+        coupling_score=get_coupling_score(coupling),
+        activity_score=get_activity_score(static_posture, repetitive, unstable),
+    )
+    scored = score_reba(observed["angles"], mods)
     return {
-        "step1_neck":s1,"step2_trunk":s2,"step3_legs":s3,
-        "step4_upper_arm":s4,"step5_elbow":s5,"step6_wrist":s6,
-        "score_a":int(score_a),"score_b":int(score_b),
-        "final_reba":int(final),"risk_level":classify_reba_risk(final),
+        "step1_neck":scored.neck,"step2_trunk":scored.trunk,"step3_legs":scored.legs,
+        "step4_upper_arm":scored.upper_arm,"step5_elbow":scored.lower_arm,"step6_wrist":scored.wrist,
+        "score_a":scored.score_a,"score_b":scored.score_b,
+        "final_reba":scored.final,"risk_level":scored.risk,
         "predicted_angles":{},"observed_angles":observed["angles"],
         "scoring_source":"mediapipe_pose33","skeleton_type":"mediapipe33",
         "world_landmarks_available":world33 is not None,
+        "explanations":scored.explanations,"warnings":scored.warnings,
+        "recommended_action":scored.action,"table_a":scored.table_a,
+        "table_b":scored.table_b,"table_c":scored.score_c,
     }
 
 
 def analyze_frame(frame, yolo_model, ft_model, scaler, meta, conf=0.25,
                   force_load=0, coupling=0, shock_or_rapid=False,
-                  static_posture=False, repetitive=False, unstable=False):
+                  static_posture=False, repetitive=False, unstable=False,
+                  manual_modifiers=None):
     """Tek kareyi analiz eder."""
     pose33, world33 = detect_pose33(frame)
     results = yolo_model.predict(source=frame, conf=conf, save=False, verbose=False)
 
     if not results or results[0].keypoints is None:
         return (_pose33_only_result(pose33, world33, force_load, coupling,
-                shock_or_rapid, static_posture, repetitive, unstable), pose33) if pose33 else (None, None)
+                shock_or_rapid, static_posture, repetitive, unstable, manual_modifiers), pose33) if pose33 else (None, None)
 
     kp_data = results[0].keypoints.data.cpu().numpy()
     if kp_data.shape[0] == 0:
         return (_pose33_only_result(pose33, world33, force_load, coupling,
-                shock_or_rapid, static_posture, repetitive, unstable), pose33) if pose33 else (None, None)
+                shock_or_rapid, static_posture, repetitive, unstable, manual_modifiers), pose33) if pose33 else (None, None)
 
     pts = kp_data[0]
     keypoints = [[float(kp[0]), float(kp[1]), float(kp[2])] for kp in pts]
@@ -249,8 +253,25 @@ def analyze_frame(frame, yolo_model, ft_model, scaler, meta, conf=0.25,
                 compute_observed_reba(keypoints, confidence=max(0.20, conf)))
     scoring_source = "learned_angle_fallback"
     if observed is not None:
-        s1, s2, s3, s4, s5, s6 = observed["steps"]
-        scoring_source = "mediapipe_pose33" if pose33 is not None else "observed_2d_pose"
+        mods = manual_modifiers or RebaModifiers(
+            load_score=get_force_load_score(force_load, shock_or_rapid),
+            coupling_score=get_coupling_score(coupling),
+            activity_score=get_activity_score(static_posture, repetitive, unstable),
+        )
+        scored = score_reba(observed["angles"], mods)
+        return {
+            "step1_neck":scored.neck,"step2_trunk":scored.trunk,"step3_legs":scored.legs,
+            "step4_upper_arm":scored.upper_arm,"step5_elbow":scored.lower_arm,"step6_wrist":scored.wrist,
+            "score_a":scored.score_a,"score_b":scored.score_b,
+            "final_reba":scored.final,"risk_level":scored.risk,
+            "predicted_angles":{col:float(df_pred[col].iloc[0]) for col in TARGET_COLS[:19]},
+            "observed_angles":observed["angles"],"scoring_source":"mediapipe_pose33" if pose33 is not None else "observed_2d_pose",
+            "skeleton_type":"mediapipe33" if pose33 is not None else "coco17",
+            "world_landmarks_available":world33 is not None,
+            "explanations":scored.explanations,"warnings":scored.warnings,
+            "recommended_action":scored.action,"table_a":scored.table_a,
+            "table_b":scored.table_b,"table_c":scored.score_c,
+        }, pose33 if pose33 is not None else keypoints
 
     tA = get_reba_tableA_score(neck=clamp(s1, 1, 3), trunk=clamp(s2, 1, 5), legs=clamp(s3, 1, 4))
     scoreA = tA + get_force_load_score(force_load, shock_or_rapid)
@@ -319,6 +340,30 @@ def draw_annotated_frame(frame, result, keypoints, conf_threshold=0.3):
     return annotated
 
 
+def build_current_modifiers(force_load=None, coupling=None):
+    """Build task modifiers that cannot be inferred reliably from one frame."""
+    load = st.session_state.get("global_load_kg", 0) if force_load is None else force_load
+    coupling_value = st.session_state.get("global_coupling", 0) if coupling is None else coupling
+    return RebaModifiers(
+        neck_twist_or_side=st.session_state.get("mod_neck", False),
+        neck_extension=st.session_state.get("mod_neck_ext", False),
+        trunk_twist_or_side=st.session_state.get("mod_trunk", False),
+        trunk_extension=st.session_state.get("mod_trunk_ext", False),
+        shoulder_raised=st.session_state.get("mod_shoulder", False),
+        arm_abducted=st.session_state.get("mod_abducted", False),
+        arm_supported=st.session_state.get("mod_supported", False),
+        wrist_twist_or_deviation=st.session_state.get("mod_wrist", False),
+        bilateral_support=st.session_state.get("mod_bilateral", True),
+        load_score=get_force_load_score(load, st.session_state.get("mod_shock", False)),
+        coupling_score=get_coupling_score(coupling_value),
+        activity_score=get_activity_score(
+            st.session_state.get("mod_static", False),
+            st.session_state.get("mod_repetitive", False),
+            st.session_state.get("mod_unstable", False),
+        ),
+    )
+
+
 # ============================================================
 # SAYFA: ANA PANEL
 # ============================================================
@@ -358,19 +403,19 @@ def page_home():
     Görüntü/Video/Webcam
          │
          ▼
-    YOLO11 Pose (17 Keypoint)
+    MediaPipe Pose (33 Keypoint + göreli 3B)
          │
          ▼
-    Açı Hesaplama (51 → 90 feature)
+    Görünür REBA Açıları (boyun/gövde/kol/bilek/diz/ayak)
+         │
+         ├──────── YOLO11 + Extra Trees (19 gizli açı, ikincil)
          │
          ▼
-    FT-Transformer (Gizli açı tahmini → 58 output)
+    Merkezî Açıklanabilir REBA Motoru
+    (Tablo A + B + C + görev modifikatörleri)
          │
          ▼
-    REBA Skor Hesaplama (Table A + B + C)
-         │
-         ▼
-    Risk Sınıflandırma (1-15 → 5 seviye)
+    Risk + Aksiyon + "Neden Bu Skor?" (1-15 → 5 seviye)
     """, language="text")
 
     st.markdown("### Risk Seviyeleri")
@@ -411,6 +456,7 @@ def page_image_analysis():
                 result, keypoints = analyze_frame(
                     frame, yolo_model, ft_model, scaler, meta, conf,
                     force_load=force_load, coupling=coupling_score,
+                    manual_modifiers=build_current_modifiers(force_load, coupling_score),
                 )
 
             if result is None:
@@ -474,6 +520,14 @@ def page_image_analysis():
                     observed_df.columns = ["Derece"]
                     st.caption("Canlı REBA alt skorları öncelikle bu görünür geometriden hesaplanır.")
                     st.dataframe(observed_df, use_container_width=True)
+
+            if result.get("explanations"):
+                with st.expander("Neden bu skor çıktı?", expanded=True):
+                    explanation_df = pd.DataFrame(result["explanations"])
+                    st.dataframe(explanation_df, use_container_width=True)
+                    st.info(f"Önerilen aksiyon: {result.get('recommended_action', '—')}")
+            for warning in result.get("warnings", []):
+                st.warning(warning)
 
             # İndir
             result_json = json.dumps(result, ensure_ascii=False, indent=2)
@@ -541,7 +595,10 @@ def page_video_analysis():
                 should_analyze = (skip_frames == 0) or (frame_idx % (skip_frames + 1) == 0)
 
                 if should_analyze:
-                    result, keypoints = analyze_frame(frame, yolo_model, ft_model, scaler, meta, conf)
+                    result, keypoints = analyze_frame(
+                        frame, yolo_model, ft_model, scaler, meta, conf,
+                        manual_modifiers=build_current_modifiers(),
+                    )
                     last_result = result
                     processed += 1
 
@@ -786,7 +843,10 @@ def page_webcam():
                 if frame_count % analyze_every == 0:
                     # Küçült → analiz et → performans artışı
                     small_frame = cv2.resize(frame, (320, 240))
-                    result, keypoints = analyze_frame(small_frame, yolo_model, ft_model, scaler, meta, conf)
+                    result, keypoints = analyze_frame(
+                        small_frame, yolo_model, ft_model, scaler, meta, conf,
+                        manual_modifiers=build_current_modifiers(),
+                    )
 
                     if result:
                         # Keypoint'leri orijinal boyuta ölçekle
@@ -899,6 +959,28 @@ def main():
             "📹 Webcam",
             "📂 Geçmiş Analizler",
         ], index=0)
+
+        with st.expander("REBA görev ve duruş modifikatörleri"):
+            st.caption("Tek kameradan güvenilir ölçülemeyen koşulları işaretleyin.")
+            st.number_input("Taşınan yük (kg)", 0, 100, 0, key="global_load_kg")
+            coupling_label = st.selectbox(
+                "Kavrama kalitesi", ["Good (0)", "Fair (1)", "Poor (2)", "Unacceptable (3)"],
+                key="global_coupling_label",
+            )
+            st.session_state.global_coupling = int(coupling_label.split("(")[1].split(")")[0])
+            st.checkbox("Şok / ani kuvvet artışı", key="mod_shock")
+            st.checkbox("Boyun dönüşü veya yana eğilme", key="mod_neck")
+            st.checkbox("Boyun geriye bükülmüş", key="mod_neck_ext")
+            st.checkbox("Gövde dönüşü veya yana eğilme", key="mod_trunk")
+            st.checkbox("Gövde geriye bükülmüş", key="mod_trunk_ext")
+            st.checkbox("Omuz yükselmiş", key="mod_shoulder")
+            st.checkbox("Kol yana açılmış (abdüksiyon)", key="mod_abducted")
+            st.checkbox("Kol destekli / yerçekimi yardımlı", key="mod_supported")
+            st.checkbox("Bilek dönmüş veya yana sapmış", key="mod_wrist")
+            st.checkbox("İki ayağa dengeli yük veriliyor", value=True, key="mod_bilateral")
+            st.checkbox("Statik duruş > 1 dakika", key="mod_static")
+            st.checkbox("Tekrarlı hareket > 4/dakika", key="mod_repetitive")
+            st.checkbox("Ani büyük değişim / dengesiz taban", key="mod_unstable")
 
         st.markdown("---")
         st.markdown("**Hakkında**")
