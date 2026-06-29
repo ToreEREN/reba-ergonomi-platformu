@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments and editors
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Streamlit/local runtime
+.streamlit/secrets.toml
+Results/
+Output_Video/
+*.log
+
+# Local model experiments (production winner is kept separately)
+ModelExperiments_noaug/
+ModelExperiments_aug2/
+
+# Temporary and office lock files
+~$*
+*.tmp
+.DS_Store
+Thumbs.db
+

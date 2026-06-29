@@ -1,0 +1,15 @@
+{
+  "image": "fullbody_001_000.jpg",
+  "final_reba_score": 10,
+  "risk_level": "High risk",
+  "scores": {
+    "neck": 2,
+    "trunk": 6,
+    "legs": 2,
+    "upper_arm": 6,
+    "elbow": 4,
+    "wrist": 4,
+    "score_a": 7,
+    "score_b": 9
+  }
+}

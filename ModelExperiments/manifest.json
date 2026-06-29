@@ -1,0 +1,33 @@
+{
+  "best_model": "extra_trees",
+  "feature_space": "existing_standardized_90_features",
+  "targets": [
+    "elbowL_yz_deg",
+    "elbowR_yz_deg",
+    "head_vs_neck_xz_deg",
+    "head_vs_neck_yz_deg",
+    "kneeL_xz_deg",
+    "kneeL_yz_deg",
+    "kneeR_xz_deg",
+    "kneeR_yz_deg",
+    "shoulderL_vs_upperarmL_xz_deg",
+    "shoulderL_vs_upperarmL_yz_deg",
+    "shoulderR_vs_upperarmR_xz_deg",
+    "shoulderR_vs_upperarmR_yz_deg",
+    "spine1_vs_spine2_yz_deg",
+    "spine2_vs_spine3_yz_deg",
+    "spine3_vs_spine4_yz_deg",
+    "thighL_vs_spine1_yz_deg",
+    "thighR_vs_spine1_yz_deg",
+    "wristL_yz_deg",
+    "wristR_yz_deg"
+  ],
+  "train_rows_after_leakage_removal": 1920,
+  "test_rows": 480,
+  "augmented_train_rows": 3840,
+  "augmentation": {
+    "copies": 1,
+    "gaussian_noise_std": 0.015
+  },
+  "warning": "Production inference must use the original feature builder and scaler."
+}
