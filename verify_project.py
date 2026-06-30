@@ -11,6 +11,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from Utils.ModelReliability import sha256_file
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -42,6 +44,15 @@ def main():
     board = pd.read_csv(required[2])
     winner = board.sort_values("macro_r2", ascending=False).iloc[0]
     ok(f"Lider: {winner.model}, test macro R2={winner.macro_r2:.3f}")
+
+    artifact_manifest = ROOT / "ModelExperiments/artifact_manifest.json"
+    if artifact_manifest.exists():
+        integrity = json.loads(artifact_manifest.read_text(encoding="utf-8"))
+        for item in integrity["artifacts"].values():
+            artifact = ROOT / item["path"]
+            if sha256_file(artifact) != item["sha256"]:
+                raise RuntimeError(f"Model bütünlük kontrolü başarısız: {artifact}")
+        ok("Model, scaler ve pose ağırlığı SHA-256 kontrolünden geçti")
 
     result = subprocess.run(
         [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],

@@ -54,6 +54,18 @@ python -m unittest discover -s tests -v
 Beklenen kazanan model test sonucu `macro R² ≈ 0.615` değeridir. Metrikler
 `ModelExperiments/leaderboard.csv` ve `extra_trees_metrics.csv` içindedir.
 
+Rapor sonrası eklenen güvenilirlik katmanı şunları da denetler:
+
+- eşli Wilcoxon testi ve bootstrap %95 güven aralıkları,
+- yakın-kopya ve açı aralığı kontrolleri,
+- Extra Trees ağaçları arasındaki tahmin belirsizliği,
+- özellik şeması ile model/scaler/YOLO dosyalarının SHA-256 bütünlüğü,
+- açı tahminlerinden sentetik REBA-proxy skoru, risk matrisi ve Bland–Altman analizi.
+
+Çalıştırılmış araştırma notebook'u
+`research/REBA_Model_Guvenilirlik_Analizi.ipynb` dosyasındadır. Notebook sonuçları
+uzman etiketli saha doğrulaması değildir; sentetik açı verisindeki iç doğrulamadır.
+
 ## Proje yapısı
 
 ```text
@@ -61,6 +73,7 @@ app.py                     Streamlit uygulaması
 Utils/                     Poz, açı, MediaPipe ve REBA modülleri
 ModelExperiments/          Üretim modeli ve doğrulama sonuçları
 BestModel/                 Girdi ölçekleyici ve eski model araştırma çıktıları
+research/                  Yeniden üretilebilir güvenilirlik notebook'u
 ml/                        Model eğitim/karşılaştırma betikleri
 tests/                     Birim ve uçtan uca smoke testleri
 Output/                    Örnek sonuçlar

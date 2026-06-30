@@ -46,6 +46,8 @@ from Utils.RebaCalibration import compute_reba_deviations
 from Utils.PoseReba2D import compute_observed_reba
 from Utils.MediaPipePose import MP_CONNECTIONS, detect_pose33, compute_reba_pose33
 from Utils.RebaEngine import RebaModifiers, score_reba
+from Utils.FeatureSchema import validate_feature_frame
+from Utils.ModelReliability import predict_with_tree_uncertainty, uncertainty_summary
 
 # ============================================================
 # SAYFA AYARLARI
@@ -221,12 +223,15 @@ def analyze_frame(frame, yolo_model, ft_model, scaler, meta, conf=0.25,
     df_kp = pd.DataFrame([input_row])
     df_kp.columns = BASE_INPUT_COLS
     df_input = add_pose_angles(df_kp, add_planar_angles=True)
+    validate_feature_frame(df_input)
 
     X_input = df_input.values.astype('float32')
     X_scaled = scaler.transform(X_input)
+    model_uncertainty = None
     if meta.get("runtime") == "sklearn_angle_model":
-        y_pred = ft_model.predict(X_scaled)
+        y_pred, y_std = predict_with_tree_uncertainty(ft_model, X_scaled)
         df_pred = pd.DataFrame(y_pred, columns=meta["target_names"])
+        model_uncertainty = uncertainty_summary(y_pred, y_std, meta["target_names"])
     else:
         from Utils.Models import predict_advanced_multioutput
         y_pred = predict_advanced_multioutput(ft_model, X_scaled, use_uncertainty=False, batch_size=1)
@@ -271,6 +276,7 @@ def analyze_frame(frame, yolo_model, ft_model, scaler, meta, conf=0.25,
             "explanations":scored.explanations,"warnings":scored.warnings,
             "recommended_action":scored.action,"table_a":scored.table_a,
             "table_b":scored.table_b,"table_c":scored.score_c,
+            "model_uncertainty":model_uncertainty,
         }, pose33 if pose33 is not None else keypoints
 
     tA = get_reba_tableA_score(neck=clamp(s1, 1, 3), trunk=clamp(s2, 1, 5), legs=clamp(s3, 1, 4))
@@ -291,6 +297,7 @@ def analyze_frame(frame, yolo_model, ft_model, scaler, meta, conf=0.25,
         "scoring_source": scoring_source,
         "skeleton_type": "mediapipe33" if pose33 is not None else "coco17",
         "world_landmarks_available": world33 is not None,
+        "model_uncertainty": model_uncertainty,
     }
 
     return result, pose33 if pose33 is not None else keypoints
@@ -528,6 +535,18 @@ def page_image_analysis():
                     st.info(f"Önerilen aksiyon: {result.get('recommended_action', '—')}")
             for warning in result.get("warnings", []):
                 st.warning(warning)
+
+            uncertainty = result.get("model_uncertainty")
+            if uncertainty:
+                with st.expander("Model belirsizliği ve eşik uyarıları"):
+                    st.metric("Ortalama ağaçlar arası std", f"{uncertainty['mean_tree_std_deg']:.1f}°")
+                    st.metric("En yüksek ağaçlar arası std", f"{uncertainty['max_tree_std_deg']:.1f}°")
+                    if uncertainty["flagged_targets"]:
+                        st.warning(
+                            "REBA eşiğine yakın veya belirsiz hedefler: "
+                            + ", ".join(uncertainty["flagged_targets"])
+                        )
+                    st.caption("Bu değer kalibre edilmiş güven aralığı değil; Extra Trees üyeleri arasındaki yayılımdır.")
 
             # İndir
             result_json = json.dumps(result, ensure_ascii=False, indent=2)

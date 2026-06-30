@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import joblib
@@ -18,6 +19,11 @@ import pandas as pd
 from sklearn.ensemble import ExtraTreesRegressor, RandomForestRegressor
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from Utils.ModelReliability import nearest_neighbor_leakage_audit, validate_angle_range
 
 
 ANGLE_TARGETS = [
@@ -101,6 +107,19 @@ def main():
     X_test = test[features].to_numpy(np.float32)
     y_test = test[targets].to_numpy(np.float32)
     X_aug, y_aug = augment(X_train, y_train, args.augment_copies, args.noise, args.seed)
+
+    audit = {
+        "exact_overlap_after_hash_removal": int(
+            pd.util.hash_pandas_object(test[features], index=False).isin(
+                set(pd.util.hash_pandas_object(train[features], index=False))
+            ).sum()
+        ),
+        "nearest_neighbor": nearest_neighbor_leakage_audit(X_train, X_test, threshold=0.05),
+        "target_angle_range": validate_angle_range(np.concatenate([y_train, y_test])),
+        "group_split_available": False,
+        "warning": "Person/sequence identifiers are absent; near-neighbor audit cannot prove group independence.",
+    }
+    (args.output / "leakage_audit.json").write_text(json.dumps(audit, indent=2), encoding="utf-8")
 
     models = {
         "ridge": Ridge(alpha=10.0),
