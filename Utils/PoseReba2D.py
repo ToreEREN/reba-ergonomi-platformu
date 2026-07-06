@@ -90,11 +90,14 @@ def compute_observed_reba(keypoints, confidence=0.30):
     return {
         "steps": [neck_score, trunk_score, legs_score, upper_score, lower_score, 1],
         "angles": {
-            "observed_neck_deg": neck_angle,
-            "observed_trunk_deg": trunk_angle,
-            "observed_knee_flex_deg": knee_flex,
-            "observed_upper_arm_deg": upper_elevation,
-            "observed_elbow_deg": elbow,
+            "neck_deg": neck_angle,
+            "trunk_deg": trunk_angle,
+            "knee_flex_deg": knee_flex,
+            "upper_arm_deg": upper_elevation,
+            "elbow_deg": elbow,
+            "wrist_deviation_deg": None,
         },
+        "missing_angles": ["wrist_deviation_deg"],
+        "measurement_space": "image_2d",
         "assumptions": "upright camera; wrist neutral; no hidden-plane rotation",
     }

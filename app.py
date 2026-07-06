@@ -170,7 +170,7 @@ def load_all_models():
 def _pose33_only_result(pose33, world33, force_load=0, coupling=0,
                         shock_or_rapid=False, static_posture=False,
                         repetitive=False, unstable=False, manual_modifiers=None):
-    observed = compute_reba_pose33(pose33)
+    observed = compute_reba_pose33(pose33, world=world33)
     if observed is None:
         return None
     mods = manual_modifiers or RebaModifiers(
@@ -179,6 +179,10 @@ def _pose33_only_result(pose33, world33, force_load=0, coupling=0,
         activity_score=get_activity_score(static_posture, repetitive, unstable),
     )
     scored = score_reba(observed["angles"], mods)
+    scored.warnings.extend(
+        f"{name} güvenilir ölçülemedi; sonuç dikkatle yorumlanmalı"
+        for name in observed.get("missing_angles", [])
+    )
     return {
         "step1_neck":scored.neck,"step2_trunk":scored.trunk,"step3_legs":scored.legs,
         "step4_upper_arm":scored.upper_arm,"step5_elbow":scored.lower_arm,"step6_wrist":scored.wrist,
@@ -187,6 +191,7 @@ def _pose33_only_result(pose33, world33, force_load=0, coupling=0,
         "predicted_angles":{},"observed_angles":observed["angles"],
         "scoring_source":"mediapipe_pose33","skeleton_type":"mediapipe33",
         "world_landmarks_available":world33 is not None,
+        "measurement_space":observed.get("measurement_space"),
         "explanations":scored.explanations,"warnings":scored.warnings,
         "recommended_action":scored.action,"table_a":scored.table_a,
         "table_b":scored.table_b,"table_c":scored.score_c,
@@ -253,7 +258,7 @@ def analyze_frame(frame, yolo_model, ft_model, scaler, meta, conf=0.25,
     # Live scoring must primarily follow geometry actually visible in the
     # frame. The learned model remains useful for hidden-angle estimates, but
     # its third YOLO input is confidence rather than true depth.
-    observed = (compute_reba_pose33(pose33, confidence=max(0.25, conf))
+    observed = (compute_reba_pose33(pose33, confidence=max(0.25, conf), world=world33)
                 if pose33 is not None else
                 compute_observed_reba(keypoints, confidence=max(0.20, conf)))
     scoring_source = "learned_angle_fallback"
@@ -264,6 +269,10 @@ def analyze_frame(frame, yolo_model, ft_model, scaler, meta, conf=0.25,
             activity_score=get_activity_score(static_posture, repetitive, unstable),
         )
         scored = score_reba(observed["angles"], mods)
+        scored.warnings.extend(
+            f"{name} güvenilir ölçülemedi; sonuç dikkatle yorumlanmalı"
+            for name in observed.get("missing_angles", [])
+        )
         return {
             "step1_neck":scored.neck,"step2_trunk":scored.trunk,"step3_legs":scored.legs,
             "step4_upper_arm":scored.upper_arm,"step5_elbow":scored.lower_arm,"step6_wrist":scored.wrist,
@@ -273,6 +282,7 @@ def analyze_frame(frame, yolo_model, ft_model, scaler, meta, conf=0.25,
             "observed_angles":observed["angles"],"scoring_source":"mediapipe_pose33" if pose33 is not None else "observed_2d_pose",
             "skeleton_type":"mediapipe33" if pose33 is not None else "coco17",
             "world_landmarks_available":world33 is not None,
+            "measurement_space":observed.get("measurement_space"),
             "explanations":scored.explanations,"warnings":scored.warnings,
             "recommended_action":scored.action,"table_a":scored.table_a,
             "table_b":scored.table_b,"table_c":scored.score_c,
